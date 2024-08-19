@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import Modal from './components/Modal.vue';
+import type Tarefa from './interfaces/Tarefa';
+import { buscarTarefas, concluirTarefa, criarTarefa, deletarTarefa, editarTarefa } from './services/tarefaService';
 
-class Tarefa {
-	id: number = 0;
-	tarefa: string = '';
+enum TarefaStatus {
+	FALSO,
+	VERDADEIRO
 }
 
 const showModal = ref(false);
@@ -13,75 +15,33 @@ const tituloModal = ref('');
 const deletar = ref(false)
 const novaTarefa = ref('');
 const tarefaSelecionada = ref<Tarefa>();
-let lista = reactive<Tarefa[]>([]);
-let listaConcluida = reactive<Tarefa[]>([]);
+let tarefas = ref<Tarefa[]>([]);
+let tarefasConcluidas = ref<Tarefa[]>([]);
 
-lista.push(
-	{
-		id: 1,
-		tarefa: 'Teste tarefa'
-	},
-	{
-		id: 2,
-		tarefa: 'Teste tarefa 2'
-	},
-	{
-		id: 3,
-		tarefa: 'Teste tarefa 3'
-	},
-	{
-		id: 4,
-		tarefa: 'Teste tarefa 4'
-	},
-	{
-		id: 5,
-		tarefa: 'Teste tarefa 5'
-	});
-
-listaConcluida.push(
-	{
-		id: 1,
-		tarefa: 'Teste tarefa concluída 1'
-	},
-	{
-		id: 2,
-		tarefa: 'Teste tarefa concluída 2'
-	});
-
-function editarTarefa(tarefa: Tarefa) {
+function edicaoTarefa(tarefa: Tarefa) {
 	abrirModal(false, 'Editar tarefa', tarefa);
 	novaTarefa.value = tarefa.tarefa;
 };
 
-function deletarTarefa(idTarefa: number) {
-	const index = lista.findIndex(x => x.id === idTarefa);
-	lista.splice(index, 1);
-};
-
-function concluirTarefa(tarefa: Tarefa) {
-	deletarTarefa(tarefa.id);
-	listaConcluida.push(tarefa);
-};
-
 function confirmar() {
-	deletar.value ? deletarTarefa(tarefaSelecionada.value!.id) : concluirTarefa(tarefaSelecionada.value!);
+	deletar.value ? deletaTarefa(tarefaSelecionada.value!.id) : concluiTarefa(tarefaSelecionada.value);
 
 	fecharModal();
 }
 
 function cadastrarOuEditarTarefa() {
 	if (tarefaSelecionada.value) {
-		const indexAtualizar = lista.findIndex(item => item.id === tarefaSelecionada.value?.id);
-		lista[indexAtualizar] = { ...lista[indexAtualizar], tarefa: novaTarefa.value };
+		editaTarefa(tarefaSelecionada.value);
 	} else {
-		const id = lista.length + 1;
-		lista.push({ id: id, tarefa: novaTarefa.value });
+		criaTarefa();
 	}
-	novaTarefa.value = '';
+
+	fecharModal();
 }
 
 const fecharModal = () => {
-	showModal.value = false
+	showModal.value = false;
+	novaTarefa.value = '';
 }
 
 const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDeletar: boolean = false) => {
@@ -92,25 +52,71 @@ const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDel
 	deletar.value = ehDeletar;
 }
 
+const buscaTarefas = async () => {
+	tarefas.value = [];
+	tarefasConcluidas.value = [];
+
+	const tarefasEncontradas = await buscarTarefas();
+
+	tarefasEncontradas.forEach((tarefa: Tarefa) => {
+		tarefa.concluida === TarefaStatus.VERDADEIRO ? tarefasConcluidas.value.push(tarefa) : tarefas.value.push(tarefa);
+	})
+}
+
+const deletaTarefa = async (id: number) => {
+	await deletarTarefa(id);
+
+	buscaTarefas();
+}
+
+const concluiTarefa = async (tarefa: Tarefa | undefined) => {
+	await concluirTarefa(tarefa);
+
+	buscaTarefas();
+}
+
+const criaTarefa = async () => {
+	await criarTarefa(novaTarefa.value);
+
+	buscaTarefas();
+}
+
+const editaTarefa = async (tarefa: Tarefa) => {
+	await editarTarefa(tarefa, novaTarefa.value);
+
+	buscaTarefas();
+}
+
+onMounted(() => {
+	buscaTarefas();
+})
+
 </script>
 
 <template>
-	<header>
-		<h1>To-Do-List</h1>
-	</header>
+	<div class="header-bg">
+		<header>
+			<h1>To-Do-List</h1>
+
+			<nav class="menu_mobile">
+				<a href="#tarefas">Incompletas</a>
+				<a href="#tarefas_concluidas">Concluídas</a>
+			</nav>
+		</header>
+	</div>
 
 	<main>
-		<section class="tarefas">
+		<section class="tarefas" id="tarefas">
 			<div class="tarefas_topo">
 				<h1>Tarefas</h1>
 				<img src="./assets/icons/adicionar.svg" alt="" @click="abrirModal(false, 'Adicionar tarefa')">
 			</div>
 			<div class="tarefas_conteudo">
-				<span v-if="!lista.length">Nenhuma tarefa.</span>
-				<ul>
-					<li v-for="tarefa in lista">
+				<span v-if="!tarefas.length">Nenhuma tarefa.</span>
+				<ul v-else>
+					<li v-for="tarefa in tarefas">
 						<div class="icones">
-							<img src="./assets/icons/edit.svg" @click="editarTarefa(tarefa)" />
+							<img src="./assets/icons/edit.svg" @click="edicaoTarefa(tarefa)" />
 							<img src="./assets/icons/delete.svg" @click="abrirModal(true, '', tarefa, true)" />
 							<img src="./assets/icons/concluir.svg" @click="abrirModal(true, '', tarefa)" />
 						</div>
@@ -120,12 +126,12 @@ const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDel
 			</div>
 		</section>
 
-		<section class="tarefas_concluidas">
+		<section class="tarefas_concluidas" id="tarefas_concluidas">
 			<h1>Tarefas concluídas</h1>
 			<div class="tarefas_conteudo">
-				<span v-if="!listaConcluida.length">Nenhuma tarefa concluída.</span>
+				<span v-if="!tarefasConcluidas.length">Nenhuma tarefa concluída.</span>
 				<ul>
-					<li v-for="tarefa in listaConcluida">
+					<li v-for="tarefa in tarefasConcluidas">
 						<img src="./assets//icons/check.svg" />
 						<p>
 							{{ tarefa.tarefa }}
@@ -136,7 +142,7 @@ const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDel
 		</section>
 
 		<Modal :is-open="showModal" :titulo="tituloModal" :eh-modal-confirmacao="ehModalConfirmacao"
-			@modal-close="fecharModal()" @confirmar="confirmar()">
+			:eh-deletar="deletar" @modal-close="fecharModal()" @confirmar="confirmar()">
 			<template #content>
 				<form @submit.prevent="cadastrarOuEditarTarefa()">
 					<input type="text" name="tarefa" placeholder="Digite a tarefa" v-model="novaTarefa" required>
@@ -148,20 +154,46 @@ const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDel
 </template>
 
 <style scoped>
+.menu_mobile {
+	display: none;
+}
+
+header {
+	padding: 2rem 2rem 0 2rem;
+}
+
 main {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 30px;
+	padding: 1rem 2rem;
 }
 
 main section {
-	min-width: 500px;
+	min-width: min-content;
 }
 
 main section .tarefas_conteudo {
-	border: 1px solid #FFF;
 	border-radius: 5px;
 	margin-top: .5rem;
+}
+
+ul {
+	max-height: 80dvh;
+	overflow-y: auto;
+}
+
+ul::-webkit-scrollbar-track {
+	background-color: #353535;
+}
+
+ul::-webkit-scrollbar {
+	width: 6px;
+	background: #2e2e2e;
+}
+
+ul::-webkit-scrollbar-thumb {
+	background: #292929;
 }
 
 .tarefas_conteudo li:nth-child(odd) {
@@ -185,7 +217,7 @@ main section .tarefas_conteudo {
 .icones {
 	display: flex;
 	gap: 0.75rem;
-	margin: 0 1rem;
+	margin-right: 0.75rem;
 }
 
 .icones img:hover {
@@ -226,7 +258,7 @@ form input {
 	font-size: 1rem;
 	border-radius: 5px;
 	border: 1px solid var(--vt-c-black-mute);
-	margin-bottom: 1rem;
+	margin: 1rem 0;
 }
 
 form button {
@@ -238,9 +270,57 @@ form button {
 	cursor: pointer;
 	align-self: end;
 	width: max-content;
+	border-radius: 5px;
 }
 
 input:focus {
 	outline: none;
+}
+
+@media (max-width: 600px) {
+	header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		position: sticky;
+		top: 0;
+		padding: 0 1rem;
+		background-color: var(--vt-c-black-mute);
+	}
+
+	.header-bg {
+		position: sticky;
+		top: 0;
+	}
+
+	.menu_mobile {
+		display: flex;
+		gap: 2rem;
+	}
+
+	main {
+		grid-template-columns: 1fr;
+	}
+
+	.tarefas_conteudo {
+		height: max-content;
+	}
+
+	ul {
+		max-height: none;
+	}
+
+	.tarefas_conteudo li {
+		flex-direction: column;
+		align-items: start;
+		padding: 1rem;
+		gap: 10px;
+	}
+
+	li .icones {
+		margin: 0;
+		width: 100%;
+	}
+
 }
 </style>
