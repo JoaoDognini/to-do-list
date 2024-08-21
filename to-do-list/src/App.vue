@@ -1,33 +1,37 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import Modal from './components/Modal.vue';
 import type Tarefa from './interfaces/Tarefa';
 import { buscarTarefas, concluirTarefa, criarTarefa, deletarTarefa, editarTarefa } from './services/tarefaService';
 
-enum TarefaStatus {
-	FALSO,
-	VERDADEIRO
-}
+const showErro = ref(false);
+const mensagemErro = ref('');
+const showLoading = ref(false);
 
-const showModal = ref(false);
-const ehModalConfirmacao = ref(false);
-const tituloModal = ref('');
-const deletar = ref(false)
 const novaTarefa = ref('');
 const tarefaSelecionada = ref<Tarefa>();
-let tarefas = ref<Tarefa[]>([]);
-let tarefasConcluidas = ref<Tarefa[]>([]);
 
-function edicaoTarefa(tarefa: Tarefa) {
-	abrirModal(false, 'Editar tarefa', tarefa);
-	novaTarefa.value = tarefa.tarefa;
+let tarefas = ref<Tarefa[]>([]);
+
+const inputField = ref()
+const focusInput = () => {
+	inputField.value.focus();
 };
 
-function confirmar() {
-	deletar.value ? deletaTarefa(tarefaSelecionada.value!.id) : concluiTarefa(tarefaSelecionada.value);
+const mostrarErro = () => {
+	showErro.value = true;
+	mensagemErro.value = 'Não é possível salvar tarefas vazias.';
 
-	fecharModal();
+	setTimeout(() => {
+		showErro.value = false;
+		mensagemErro.value = ''
+	}, 5000)
 }
+
+function edicaoTarefa(tarefa: Tarefa) {
+	focusInput();
+	tarefaSelecionada.value = tarefa;
+	novaTarefa.value = tarefa.tarefa;
+};
 
 function cadastrarOuEditarTarefa() {
 	if (tarefaSelecionada.value) {
@@ -36,31 +40,19 @@ function cadastrarOuEditarTarefa() {
 		criaTarefa();
 	}
 
-	fecharModal();
-}
-
-const fecharModal = () => {
-	showModal.value = false;
 	novaTarefa.value = '';
-}
-
-const abrirModal = (confirmacao: boolean, titulo: string, tarefa?: Tarefa, ehDeletar: boolean = false) => {
-	showModal.value = true;
-	ehModalConfirmacao.value = confirmacao;
-	tituloModal.value = titulo;
-	tarefaSelecionada.value = tarefa;
-	deletar.value = ehDeletar;
+	tarefaSelecionada.value = undefined;
 }
 
 const buscaTarefas = async () => {
 	tarefas.value = [];
-	tarefasConcluidas.value = [];
-
-	const tarefasEncontradas = await buscarTarefas();
-
-	tarefasEncontradas.forEach((tarefa: Tarefa) => {
-		tarefa.concluida === TarefaStatus.VERDADEIRO ? tarefasConcluidas.value.push(tarefa) : tarefas.value.push(tarefa);
-	})
+	novaTarefa.value = '';
+	showLoading.value = true;
+	try {
+		tarefas.value = await buscarTarefas();
+	} finally {
+		showLoading.value = false;
+	}
 }
 
 const deletaTarefa = async (id: number) => {
@@ -76,12 +68,22 @@ const concluiTarefa = async (tarefa: Tarefa | undefined) => {
 }
 
 const criaTarefa = async () => {
+	if (!novaTarefa.value) {
+		mostrarErro();
+		return;
+	}
+
 	await criarTarefa(novaTarefa.value);
 
 	buscaTarefas();
 }
 
 const editaTarefa = async (tarefa: Tarefa) => {
+	if (!novaTarefa.value) {
+		mostrarErro();
+		return;
+	}
+
 	await editarTarefa(tarefa, novaTarefa.value);
 
 	buscaTarefas();
@@ -90,237 +92,205 @@ const editaTarefa = async (tarefa: Tarefa) => {
 onMounted(() => {
 	buscaTarefas();
 })
-
 </script>
 
 <template>
 	<div class="header-bg">
 		<header>
-			<h1>To-Do-List</h1>
-
-			<nav class="menu_mobile">
-				<a href="#tarefas">Incompletas</a>
-				<a href="#tarefas_concluidas">Concluídas</a>
-			</nav>
+			<h1>To Do List</h1>
 		</header>
 	</div>
 
 	<main>
-		<section class="tarefas" id="tarefas">
-			<div class="tarefas_topo">
-				<h1>Tarefas</h1>
-				<img src="./assets/icons/adicionar.svg" alt="" @click="abrirModal(false, 'Adicionar tarefa')">
-			</div>
-			<div class="tarefas_conteudo">
-				<span v-if="!tarefas.length">Nenhuma tarefa.</span>
-				<ul v-else>
-					<li v-for="tarefa in tarefas">
-						<div class="icones">
-							<img src="./assets/icons/edit.svg" @click="edicaoTarefa(tarefa)" />
-							<img src="./assets/icons/delete.svg" @click="abrirModal(true, '', tarefa, true)" />
-							<img src="./assets/icons/concluir.svg" @click="abrirModal(true, '', tarefa)" />
-						</div>
-						<p>{{ tarefa.tarefa }}</p>
-					</li>
-				</ul>
-			</div>
-		</section>
+		<div v-if="!tarefas.length && !showLoading" class="nenhuma_tarefa">
+			<span>Nenhuma tarefa encontrada. <br>Comece adicionando uma!</span>
 
-		<section class="tarefas_concluidas" id="tarefas_concluidas">
-			<h1>Tarefas concluídas</h1>
-			<div class="tarefas_conteudo">
-				<span v-if="!tarefasConcluidas.length">Nenhuma tarefa concluída.</span>
-				<ul>
-					<li v-for="tarefa in tarefasConcluidas">
-						<img src="./assets//icons/check.svg" />
-						<p>
-							{{ tarefa.tarefa }}
-						</p>
-					</li>
-				</ul>
+			<div class="adicionar_tarefa">
+				<input type="text" v-model="novaTarefa" placeholder="Adicionar nova tarefa" @keyup.enter="criaTarefa()"
+					ref="inputField" required>
+				<img class="adicionar" src="./assets/icons/adicionar.svg" @click="cadastrarOuEditarTarefa()"
+					alt="Ícone adicionar" />
 			</div>
-		</section>
+		</div>
 
-		<Modal :is-open="showModal" :titulo="tituloModal" :eh-modal-confirmacao="ehModalConfirmacao"
-			:eh-deletar="deletar" @modal-close="fecharModal()" @confirmar="confirmar()">
-			<template #content>
-				<form @submit.prevent="cadastrarOuEditarTarefa()">
-					<input type="text" name="tarefa" placeholder="Digite a tarefa" v-model="novaTarefa" required>
-					<button type="submit">Adicionar</button>
-				</form>
-			</template>
-		</Modal>
+		<div v-else>
+			<div class="adicionar_tarefa_container">
+				<div class="adicionar_tarefa">
+					<input type="text" v-model="novaTarefa" placeholder="Adicionar nova tarefa"
+						@keyup.enter="cadastrarOuEditarTarefa()" ref="inputField" required>
+					<img class="adicionar" src="./assets/icons/adicionar.svg" @click="cadastrarOuEditarTarefa()"
+						alt="Ícone adicionar" />
+				</div>
+				<span v-if="showErro" class="span_erro">{{ mensagemErro }}</span>
+			</div>
+
+			<ul>
+				<li v-for="tarefa in tarefas" class="lista_item">
+					<div class="lista_item_conteudo">
+						<img v-if="tarefa.concluida" src="./assets/icons/marcado.svg" alt="Ícone marcado" />
+						<img v-else src="./assets/icons/desmarcado.svg" @click="concluiTarefa(tarefa)"
+							alt="Ícone desmarcado" />
+
+						<span v-bind:class="{ concluida: tarefa.concluida }">{{ tarefa.tarefa }}</span>
+					</div>
+					<div class="lista_item_botoes">
+						<img v-bind:class="{ naoEditar: tarefa.concluida }" src="./assets/icons/editar.svg"
+							@click="edicaoTarefa(tarefa)" alt="Ícone editar">
+						<img src="./assets/icons/excluir.svg" @click="deletaTarefa(tarefa.id)" alt="Ícone excluir">
+					</div>
+				</li>
+			</ul>
+		</div>
+
+		<div v-if="showLoading" class="loading">
+			<div class="loader"></div>
+		</div>
 	</main>
 </template>
 
 <style scoped>
-.menu_mobile {
-	display: none;
-}
-
 header {
-	padding: 2rem 2rem 0 2rem;
+	padding: 2rem 2rem 2rem 2rem;
 }
 
 main {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 30px;
-	padding: 1rem 2rem;
-}
-
-main section {
-	min-width: min-content;
-}
-
-main section .tarefas_conteudo {
+	padding: 1rem;
+	background-color: var(--bg-preto-secundario);
 	border-radius: 5px;
-	margin-top: .5rem;
+	max-width: 600px;
 }
 
-ul {
-	max-height: 80dvh;
-	overflow-y: auto;
-}
-
-ul::-webkit-scrollbar-track {
-	background-color: #353535;
-}
-
-ul::-webkit-scrollbar {
-	width: 6px;
-	background: #2e2e2e;
-}
-
-ul::-webkit-scrollbar-thumb {
-	background: #292929;
-}
-
-.tarefas_conteudo li:nth-child(odd) {
-	background-color: rgb(37, 37, 37);
-}
-
-.tarefas_conteudo li:first-child {
-	border-radius: 5px 5px 0 0;
-}
-
-.tarefas_conteudo li:last-child {
-	border-radius: 0 0 5px 5px;
-}
-
-.tarefas_conteudo li {
-	display: flex;
-	align-items: center;
-	padding: 1rem;
-}
-
-.icones {
-	display: flex;
-	gap: 0.75rem;
-	margin-right: 0.75rem;
-}
-
-.icones img:hover {
+main img {
 	cursor: pointer;
 }
 
-.tarefas_topo {
-	display: flex;
-	justify-content: space-between;
-}
-
-.tarefas_topo img {
-	cursor: pointer;
-}
-
-.tarefas_concluidas h1 {
-	text-align: end;
-}
-
-.tarefas_concluidas ul li {
-	display: flex;
-	gap: 1rem;
-}
-
-.tarefas_concluidas span {
-	padding: 1rem;
-	display: block;
-}
-
-form {
+.nenhuma_tarefa {
 	display: flex;
 	flex-direction: column;
+	align-items: center;
 }
 
-form input {
+.nenhuma_tarefa>span {
+	color: var(--c4);
+	font-size: 1.5rem;
+	margin-bottom: 2rem;
+	text-align: center;
+}
+
+.span_erro {
+	padding: 0.5rem 1rem;
+	display: block;
+	font-weight: 500;
+}
+
+input {
+	padding: 1rem 3rem 1rem 1rem;
+	font-size: 1.15rem;
 	width: 100%;
-	padding: 1rem;
-	font-size: 1rem;
-	border-radius: 5px;
-	border: 1px solid var(--vt-c-black-mute);
-	margin: 1rem 0;
-}
-
-form button {
-	padding: 1rem;
 	border: none;
-	background-color: #125FFF;
-	color: #FFF;
-	font-weight: 600;
-	cursor: pointer;
-	align-self: end;
-	width: max-content;
+	background-color: var(--bg-preto);
+	color: var(--branco);
 	border-radius: 5px;
 }
 
 input:focus {
-	outline: none;
+	outline: 1px solid #646464;
+	border: none;
 }
 
-@media (max-width: 600px) {
-	header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		position: sticky;
-		top: 0;
-		padding: 0 1rem;
-		background-color: var(--vt-c-black-mute);
+.adicionar_tarefa_container {
+	margin-bottom: 1rem;
+}
+
+.adicionar_tarefa {
+	display: flex;
+	align-items: center;
+	position: relative;
+}
+
+.adicionar_tarefa .adicionar {
+	position: absolute;
+	right: 16px;
+}
+
+.lista_item {
+	display: flex;
+	justify-content: space-between;
+	gap: 2rem;
+	padding: 1rem 0.5rem;
+	color: var(--branco);
+}
+
+.lista_item:nth-child(odd) {
+	background-color: #2b2b2b;
+	border-radius: 5px;
+}
+
+.lista_item span {
+	font-weight: 600;
+	font-size: 1rem;
+}
+
+.lista_item .lista_item_conteudo {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.lista_item .lista_item_botoes {
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+	opacity: 0;
+}
+
+.lista_item:hover>.lista_item_botoes {
+	opacity: 1;
+	transition: 0.5s;
+}
+
+.lista_item_botoes img:hover {
+	scale: 1.25;
+	transition: 0.3s;
+}
+
+.concluida {
+	color: var(--c1);
+	text-decoration: line-through;
+}
+
+.naoEditar {
+	display: none;
+}
+
+.loading {
+	display: flex;
+	justify-content: center;
+	padding: 1rem;
+}
+
+.loader {
+	width: 50px;
+	height: 50px;
+	border: 4px solid var(--c4);
+	border-radius: 50%;
+	border-top-color: transparent;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	0% {
+		transform: rotate(0deg);
 	}
 
-	.header-bg {
-		position: sticky;
-		top: 0;
+	100% {
+		transform: rotate(360deg);
 	}
+}
 
-	.menu_mobile {
-		display: flex;
-		gap: 2rem;
+@media (max-width: 960px) {
+	.lista_item .lista_item_botoes {
+		opacity: 1;
 	}
-
-	main {
-		grid-template-columns: 1fr;
-	}
-
-	.tarefas_conteudo {
-		height: max-content;
-	}
-
-	ul {
-		max-height: none;
-	}
-
-	.tarefas_conteudo li {
-		flex-direction: column;
-		align-items: start;
-		padding: 1rem;
-		gap: 10px;
-	}
-
-	li .icones {
-		margin: 0;
-		width: 100%;
-	}
-
 }
 </style>
