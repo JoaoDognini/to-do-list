@@ -33,14 +33,24 @@ export const concluirTarefa = async (tarefa: Tarefa | undefined) => {
 }
 
 export const criarTarefa = async (tarefa: string) => {
-	await api.post('', {
-		tarefa: tarefa,
-		concluida: false
-	})
+	if (!tarefa) return;
+	try {
+		await api.post('', {
+			tarefa: tarefa,
+			concluida: false
+		})
+	} catch (error) {
+		return console.error('Não é possível criar tarefa vazia.', error)
+	}
 }
 
 export const editarTarefa = async (tarefa: Tarefa, novaTarefa: string) => {
-	await api.put(`/${tarefa.id}`, {
-		...tarefa, tarefa: novaTarefa
-	})
+	if (!novaTarefa) return;
+	try {
+		await api.put(`/${tarefa.id}`, {
+			...tarefa, tarefa: novaTarefa
+		})
+	} catch (error) {
+		return console.error('Não é possível criar tarefa vazia.', error)
+	}
 }
